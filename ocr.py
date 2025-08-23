@@ -1,15 +1,11 @@
 from paddleocr import PPStructure
 import cv2
 import json
+import numpy as np
+
 
 # Initialize parser
-structure_engine = PPStructure(
-    table=True,
-    ocr=True,
-    layout=True,
-    lang='en',
-    show_log=False,
-)
+structure_engine = PPStructure(show_log=False)
 
 image_path = 'images/image1.jpeg'
 output_image_path = 'output/annotated_receipt.jpg'
@@ -39,7 +35,7 @@ for item in result:
         top_left = (int(x_min), int(y_min))
         bottom_right = (int(x_max), int(y_max))
 
-        cv2.rectangle(image, top_left, bottom_right, box_color, 3)
+        cv2.polylines(image, [np.array(text_region, dtype=np.int32)], True, box_color, 3)
         
         text_pos = (top_left[0], max(top_left[1] - 10, 10))
         cv2.putText(image, text_item.get('text', ''), text_pos,

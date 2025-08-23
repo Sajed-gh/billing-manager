@@ -1,3 +1,4 @@
-easyocr
 opencv-python
-numPy
+numpy>=1.24
+paddleocr==2.7.0
+paddlepaddle
