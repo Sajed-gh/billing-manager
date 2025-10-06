@@ -3,7 +3,6 @@ import cv2
 import json
 import numpy as np
 
-
 # Initialize parser
 structure_engine = PPStructure(show_log=False)
 

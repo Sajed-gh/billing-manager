@@ -5,9 +5,11 @@ import numpy as np
 
 structure_engine = PPStructure(show_log=False, lang='en')
 
-image_path = 'images/image4.jpeg'
+image_path = 'images/image7.jpg'
 
 result = structure_engine(image_path)
+doc_bbox = result[0].get('bbox',[])
+
 image = cv2.imread(image_path)
 
 output = []
@@ -27,7 +29,13 @@ for item in result:
             'box': [(x_min,y_min),(x_max,y_max)]
         })
         
-y_threshold = 30
+if doc_bbox:
+    doc_height = doc_bbox[3] - doc_bbox[1]
+    y_threshold = int(0.01 * doc_height)  # 1% of document height
+else:
+    y_threshold = 10
+
+    
 output.sort(key=lambda b: b['box'][0][1])
 lines= []
 for box in output:
@@ -52,19 +60,21 @@ for line in lines:
     y_max = max(b['box'][1][1] for b in line['boxes'])
     merged_box = [(x_min,y_min),(x_max,y_max)]
 
+    if y_min < 0.25 * doc_height:
+        zone = 'header'
+    elif y_min < 0.75 * doc_height:
+        zone = 'body'
+    else:
+        zone = 'footer'
+
     final_output.append({
-        'merged_text': merged_text,
-        'merged_box': merged_box
+        'text': merged_text,
+        'box': merged_box,
+        'zone': zone
     })
 
-print(final_output)
+for line in final_output:
+    print(line)
 
-
-
-# result = [{ 
-#     'type': text,
-#     "bbox": [n1,n2,n3,n4], 'img': array([[]]),
-#     'res': [{'text': text, 'confidence': real,"text_region": [[],[],[],[]]},...{}]
-# }]
 
 
