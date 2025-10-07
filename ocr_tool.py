@@ -24,32 +24,40 @@ def extract_text(image_path:str):
         })
     return extracted_text
 
-def reconstruct_table(extracted_text):
+def reconstruct_table(extracted_text, row_eps_ratio: float = 0.01):
     if not extracted_text:
         return []
-    
+
+    # Compute centroids of text boxes
     centroids = np.array([
-        [np.mean([p[0] for p in item['bpoly']]),
-         np.mean([p[1] for p in item["bpoly"]])
-        ]
+        [np.mean([p[0] for p in item['bpoly']]), np.mean([p[1] for p in item['bpoly']])]
         for item in extracted_text
     ])
 
-    db = DBSCAN(eps=10,min_samples=1,metric='euclidean')
-    db.fit(centroids[:,1].reshape(-1,1))
+    # Calculate eps relative to median y-coordinate distance
+    y_coords = centroids[:, 1]
+    median_y = np.median(y_coords)
+    eps = median_y * row_eps_ratio
+
+    # Cluster rows
+    db = DBSCAN(eps=eps, min_samples=1, metric='euclidean')
+    db.fit(centroids[:, 1].reshape(-1, 1))
     row_labels = db.labels_
 
+    # Group items by row label
     rows_dict = {}
     for label, item in zip(row_labels, extracted_text):
-        rows_dict.setdefault(label,[]).append(item)
-       
+        rows_dict.setdefault(label, []).append(item)
+
+    # Sort each row by leftmost x-coordinate
     table = []
     for row_idx in sorted(rows_dict.keys()):
         row = rows_dict[row_idx]
-        row.sort(key=lambda x: np.mean([p[0] for p in x['bpoly']]))
-        table.append(row)
-    
+        row.sort(key=lambda x: min(p[0] for p in x['bpoly']))
+        table.append([cell['text'] for cell in row])
+
     return table
+
 
 if __name__== '__main__':
     image_path = "images/image1.jpeg"
@@ -58,5 +66,4 @@ if __name__== '__main__':
     table = reconstruct_table(extracted_text)
 
     for r_idx, row in enumerate(table):
-        row_texts = [cell['text'] for cell in row]
-        print(f"Row {r_idx}: {row_texts}")
+        print(f"Row {r_idx}: {row}")
