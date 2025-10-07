@@ -1,80 +1,62 @@
 from paddleocr import PPStructure
-import cv2
+import os
+import json
 import numpy as np
+from sklearn.cluster import DBSCAN
 
 
-structure_engine = PPStructure(show_log=False, lang='en')
+def extract_text(image_path:str):
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f'Imagenot found: {image_path}')
 
-image_path = 'images/image7.jpg'
+    ocr_engine = PPStructure(show_log=False,lang="en")
+    result = ocr_engine(image_path)
 
-result = structure_engine(image_path)
-doc_bbox = result[0].get('bbox',[])
-
-image = cv2.imread(image_path)
-
-output = []
-for item in result:
-    for element in item.get('res',[]):
-        region = element.get('text_region')
-        if not region:
-            continue
-        x_coords = [p[0] for p in region]
-        y_coords = [p[1] for p in region]
-        x_min, x_max = min(x_coords), max(x_coords)
-        y_min, y_max = min(y_coords), max(y_coords)
-
-        output.append({
-            'text': element.get('text',''),
-            'confidence': element.get('confidence',0),
-            'box': [(x_min,y_min),(x_max,y_max)]
+    extracted_text = []
+    for element in result[0].get('res',[]):
+        bpoly = element.get('text_region')
+        if not bpoly:
+            continue 
+        extracted_text.append({
+            "text": element.get('text',''),
+            "bpoly": bpoly,
+            "confidence": element.get("confidence",0.0)
         })
-        
-if doc_bbox:
-    doc_height = doc_bbox[3] - doc_bbox[1]
-    y_threshold = int(0.01 * doc_height)  # 1% of document height
-else:
-    y_threshold = 10
+    return extracted_text
 
+def reconstruct_table(extracted_text):
+    if not extracted_text:
+        return []
     
-output.sort(key=lambda b: b['box'][0][1])
-lines= []
-for box in output:
-    placed = False
-    for line in lines: 
-        line_ref = np.mean([b['box'][0][1] for b in line['boxes']])
-        if abs(box['box'][0][1] - line_ref) <= y_threshold:
-            line['boxes'].append(box)
-            placed= True
-            break
-    if not placed: 
-        lines.append({"boxes": [box]})
+    centroids = np.array([
+        [np.mean([p[0] for p in item['bpoly']]),
+         np.mean([p[1] for p in item["bpoly"]])
+        ]
+        for item in extracted_text
+    ])
 
-final_output = []               
-for line in lines:
-    line['boxes'].sort(key=lambda b:b['box'][0][0])
-    merged_text = " ".join([b['text'] for b in line['boxes']])
+    db = DBSCAN(eps=10,min_samples=1,metric='euclidean')
+    db.fit(centroids[:,1].reshape(-1,1))
+    row_labels = db.labels_
 
-    x_min = min(b['box'][0][0] for b in line['boxes'])
-    y_min = min(b['box'][0][1] for b in line['boxes'])
-    x_max = max(b['box'][1][0] for b in line['boxes'])
-    y_max = max(b['box'][1][1] for b in line['boxes'])
-    merged_box = [(x_min,y_min),(x_max,y_max)]
+    rows_dict = {}
+    for label, item in zip(row_labels, extracted_text):
+        rows_dict.setdefault(label,[]).append(item)
+       
+    table = []
+    for row_idx in sorted(rows_dict.keys()):
+        row = rows_dict[row_idx]
+        row.sort(key=lambda x: np.mean([p[0] for p in x['bpoly']]))
+        table.append(row)
+    
+    return table
 
-    if y_min < 0.25 * doc_height:
-        zone = 'header'
-    elif y_min < 0.75 * doc_height:
-        zone = 'body'
-    else:
-        zone = 'footer'
+if __name__== '__main__':
+    image_path = "images/image1.jpeg"
+    extracted_text = extract_text(image_path)
 
-    final_output.append({
-        'text': merged_text,
-        'box': merged_box,
-        'zone': zone
-    })
+    table = reconstruct_table(extracted_text)
 
-for line in final_output:
-    print(line)
-
-
-
+    for r_idx, row in enumerate(table):
+        row_texts = [cell['text'] for cell in row]
+        print(f"Row {r_idx}: {row_texts}")
