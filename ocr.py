@@ -4,10 +4,9 @@ import json
 import numpy as np
 from sklearn.cluster import DBSCAN
 
-
 ocr_engine = PPStructure(show_log=False,lang="en")
 
-def extract_text(image_path:str, ocr_engine):
+def extract_text(image_path:str):
     if not os.path.exists(image_path):
         raise FileNotFoundError(f'Imagenot found: {image_path}')
 
@@ -58,9 +57,11 @@ def reconstruct_table(extracted_text, row_eps_ratio: float = 0.5):
 
 if __name__== '__main__':
     image_path = "images/image3.jpeg"
-    extracted_text = extract_text(image_path,ocr_engine=ocr_engine)
+    extracted_text = extract_text(image_path)
 
     table = reconstruct_table(extracted_text)
 
-    for r_idx, row in enumerate(table):
-        print(f"Row {r_idx}: {row}")
+    print(table)
+
+    # for r_idx, row in enumerate(table):
+    #     print(f"Row {r_idx}: {row}")

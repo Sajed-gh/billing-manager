@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional, List
+from datetime import date, time
 
 
 
@@ -18,9 +19,10 @@ class ReceiptInfo(BaseModel):
     receipt_number : Optional[str] = None
     date : Optional[str] = None
     time : Optional[str] = None
+    cachier : Optional[str] = None
 
 class ReceiptTotal(BaseModel):
-    total: Optional[str] = None
+    total: Optional[float] = None
     paid : Optional[float] = None
     change : Optional[float] = None
     num_items : Optional[int] = None
@@ -30,4 +32,4 @@ class Receipt(BaseModel):
     receipt_info : ReceiptInfo
     items : List[ReceiptItem]
     totals : ReceiptTotal
-    note : Optional[List[str]] = None
+    note : Optional[List[str]] = []
