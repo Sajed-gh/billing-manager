@@ -14,10 +14,13 @@ prompt = ChatPromptTemplate.from_template(
     """
     You are a data extraction assistant.
 
-    You will receive a table (list of text rows) extracted from a scanned receipt.
+    You will receive a table extracted from a scanned receipt. Each row contains text elements in reading order (left to right), columns separated by "||".
 
-    Task:
-    - Infer the receipt structure: store info, items, totals, notes.
+    Your task:
+    - Extract all relevant information from the table.
+    - Only correct store names or item names if they are obviously garbled or contain OCR errors (e.g., random letters, missing spaces, or nonsensical characters). 
+    - Infer missing quantities if obvious from context.
+    - Ignore irrelevant lines like promotional messages, footnotes, or advertisements.
 
     OCR Table:
     {table_text}
