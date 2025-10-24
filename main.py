@@ -1,10 +1,10 @@
 import os
 import json
-from paddleocr import PPStructure
-from ocr import extract_text, reconstruct_table
-from llm_pipeline import run  # your LLM pipeline function
+from ocr_logic.ocr import extract_text
+from ocr_logic.utils import reconstruct_table
+from reasoning.llm_pipeline import run
 
-def process_receipt_image(image_path: str):
+def process_receipt_image(image_path):
     """
     Full end-to-end pipeline:
     1. OCR extraction
