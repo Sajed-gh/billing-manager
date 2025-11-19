@@ -1,3 +1,5 @@
 .venv
 .env
 images
+__pycache__
+test.py
