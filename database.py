@@ -15,10 +15,20 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+class UserDB(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    password_hash = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    receipts = relationship("ReceiptDB", back_populates="user")
+
 class ReceiptDB(Base):
     __tablename__ = "receipts"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id")) # LINKED TO USER
     store_name = Column(String)
     store_address = Column(String)
     store_phone = Column(String)
@@ -32,12 +42,13 @@ class ReceiptDB(Base):
     paid = Column(Float)
     change = Column(Float)
     num_items = Column(Integer)
-    currency = Column(String) # ADDED
-    image_hash = Column(String, unique=True, index=True) # For caching
+    currency = Column(String)
+    image_hash = Column(String, unique=True, index=True)
     
     created_at = Column(DateTime, default=datetime.utcnow)
-    raw_json = Column(JSON) # Backup of the full structure
+    raw_json = Column(JSON)
 
+    user = relationship("UserDB", back_populates="receipts")
     items = relationship("ItemDB", back_populates="receipt", cascade="all, delete-orphan")
 
 class ItemDB(Base):
@@ -56,10 +67,11 @@ class ItemDB(Base):
 def init_db():
     Base.metadata.create_all(bind=engine)
 
-def save_receipt(receipt_obj, image_hash=None):
+def save_receipt(receipt_obj, user_id, image_hash=None):
     db = SessionLocal()
     try:
         new_receipt = ReceiptDB(
+            user_id=user_id,
             store_name=receipt_obj.store_info.name,
             store_address=receipt_obj.store_info.address,
             store_phone=receipt_obj.store_info.phone,
@@ -93,23 +105,23 @@ def save_receipt(receipt_obj, image_hash=None):
     finally:
         db.close()
 
-def get_receipt_by_hash(hash_str):
+def get_receipt_by_hash(hash_str, user_id):
     db = SessionLocal()
     try:
-        return db.query(ReceiptDB).filter(ReceiptDB.image_hash == hash_str).first()
+        return db.query(ReceiptDB).filter(ReceiptDB.image_hash == hash_str, ReceiptDB.user_id == user_id).first()
     finally:
         db.close()
 
-def get_recent_receipts(limit=10):
+def get_recent_receipts(user_id, limit=8):
     db = SessionLocal()
     try:
-        return db.query(ReceiptDB).options(joinedload(ReceiptDB.items)).order_by(ReceiptDB.created_at.desc()).limit(limit).all()
+        return db.query(ReceiptDB).options(joinedload(ReceiptDB.items)).filter(ReceiptDB.user_id == user_id).order_by(ReceiptDB.created_at.desc()).limit(limit).all()
     finally:
         db.close()
 
-def get_all_receipts():
+def get_all_receipts(user_id):
     db = SessionLocal()
     try:
-        return db.query(ReceiptDB).options(joinedload(ReceiptDB.items)).order_by(ReceiptDB.created_at.desc()).all()
+        return db.query(ReceiptDB).options(joinedload(ReceiptDB.items)).filter(ReceiptDB.user_id == user_id).order_by(ReceiptDB.created_at.desc()).all()
     finally:
         db.close()
