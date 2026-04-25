@@ -1,69 +1,67 @@
-# Billing Manager AI Agent
+# Billing Manager AI Agent (Vision v2)
 
-**Billing Manager** is an AI-powered agent that uses Google Gemini and OCR to extract information from paper bills and receipts, and then generates a structured, numeric version of those receipts.
-
----
-
-## Features
-
-- Scans invoices, receipts, and bills (photos or scans)  
-- Uses **OCR** to extract raw text from documents  
-- Leverages **Google Gemini** to interpret and structure the extracted data  
-- Outputs a clean, structured JSON with line-items, totals, dates, vendor, units, etc.
+**Billing Manager** is a high-performance AI agent that leverages **Gemini Multimodal Vision** to extract structured data from paper receipts and invoices with high precision.
 
 ---
 
-## How It Works (Overview)
+## 🚀 Evolution: Vision v2
+We have radically simplified the architecture by moving from a legacy "OCR + Text Parsing" pipeline to a **Native Multimodal** approach. This significantly improves accuracy for complex layouts, tilted images, and hand-written elements.
 
-1. **Image Input**: You provide a photo or scan of a paper bill / receipt.  
-2. **OCR Processing**: OCR engine converts the image to raw text.  
-3. **LLM Interpretation**: Google Gemini processes the raw text, understanding context, semantics, and meaning.  
-4. **Data Structuring**: The agent extracts key fields and outputs them in a structured numeric format.
-
----
-
-## Use Cases
-
-- Automating expense tracking from paper receipts.  
-- Digitizing bills and invoices for bookkeeping.  
-- Integrating with accounting software or financial dashboards.  
-- Auditing and data validation on large volumes of receipt images.
+## ✨ Features
+- **Direct Image Processing**: No more brittle local OCR dependencies.
+- **Multimodal Intelligence**: Gemini "sees" the receipt structure (logos, tables, bold text) to better identify fields.
+- **Structured Pydantic Output**: Guaranteed data integrity with automatic validation.
+- **Streamlit Dashboard**: A clean, responsive UI for real-time extraction and visualization.
 
 ---
 
-## Tech Stack
-
-- **OCR**: paddleocr==2.7.0 
-- **LLM**: Google Gemini 2.5 
-- **Programming Language / Framework**: Python, Langchain, Pydantic
-
----
-
-## Installation
-
-1. Clone the repo:
-
-    ```bash
-    git clone https://github.com/Sajed-gh/billing-manager.git
-    cd billing-manager
-    ```
-
-2. Install dependencies:
-
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-3. Setup environment variables:
-
-    ```text
-    GOOGLE_GEMINI_API_KEY=your_api_key
-    ```
+## 🛠 Tech Stack
+- **LLM**: Google Gemini 1.5 Flash (Multimodal)
+- **Frameworks**: LangChain, Pydantic, Streamlit
+- **Language**: Python 3.10+
 
 ---
 
-## Usage
+## 📦 Installation
 
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/Sajed-gh/billing-manager.git
+   cd billing-manager
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Configure Environment:**
+   Create a `.env` file in the root directory:
+   ```text
+   GOOGLE_API_KEY=your_gemini_api_key_here
+   ```
+
+---
+
+## 🚀 Usage
+
+### 1. Web UI (Recommended)
+Run the Streamlit application for an interactive experience:
 ```bash
-python main.py --image path/to/receipt.jpg --output structured.json
+streamlit run app.py
 ```
+
+### 2. CLI
+Process an image directly from the terminal:
+```bash
+python main.py --image path/to/receipt.jpg --output results.json
+```
+
+---
+
+## 📂 Project Structure
+- `app.py`: Streamlit web interface.
+- `main.py`: Core logic and CLI entry point.
+- `reasoning/`: Contains the Gemini Multimodal pipeline.
+- `schema.py`: Pydantic models for structured data.
+- `config.py`: Configuration and API key management.

@@ -3,3 +3,6 @@
 images
 __pycache__
 test.py
+output
+chroma_db
+docs

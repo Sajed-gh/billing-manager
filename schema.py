@@ -10,10 +10,13 @@ class ReceiptItem(BaseModel):
         ..., description="Name or description of the purchased item"
     )
     unit_price: Optional[float] = Field(
-        description="Price per unit of the item"
+        None, description="Price per unit of the item"
     )
     total_price: Optional[float] = Field(
         None, description="Total price for this line item (quantity × unit_price if available)"
+    )
+    currency: Optional[str] = Field(
+        None, description="Detected currency symbol or ISO code (e.g. $, USD, EUR)"
     )
 
 
@@ -56,6 +59,9 @@ class ReceiptTotal(BaseModel):
     )
     num_items: Optional[int] = Field(
         None, description="Total number of items on the receipt"
+    )
+    currency: Optional[str] = Field(
+        None, description="Detected currency symbol or ISO code (e.g. $, USD, EUR)"
     )
 
 

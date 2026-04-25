@@ -1,4 +1,12 @@
-opencv-python
-numpy>=1.24
-paddleocr==2.7.0
-paddlepaddle
+streamlit
+pillow
+pydantic
+langchain-google-genai
+python-dotenv
+google-generativeai
+sqlalchemy
+psycopg2-binary
+pandas
+openpyxl
+pymupdf
+chromadb
