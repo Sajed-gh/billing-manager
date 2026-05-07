@@ -6,9 +6,9 @@ import io
 import fitz  # PyMuPDF
 from PIL import Image, ImageOps
 from main import process_receipt_image, calculate_hash
-from database import init_db, save_receipt, get_recent_receipts, get_all_receipts, get_receipt_by_hash
+from database import init_db, save_receipt, get_recent_receipts, get_all_receipts, get_receipt_by_hash, delete_receipt
 from reasoning.vector_store import index_receipt, query_receipts
-from langchain_google_genai import ChatGoogleGenerativeAI
+import google.generativeai as genai
 from config import api_key
 from user_auth.auth import authenticate_user, create_user
 
@@ -82,9 +82,11 @@ st.markdown("""
 # -----------------------------
 if "user" not in st.session_state: st.session_state["user"] = None
 if "receipt_data" not in st.session_state: st.session_state["receipt_data"] = None
+if "current_receipt_id" not in st.session_state: st.session_state["current_receipt_id"] = None
 if "current_image" not in st.session_state: st.session_state["current_image"] = None
 if "chat_history" not in st.session_state: st.session_state["chat_history"] = []
 if "show_assistant" not in st.session_state: st.session_state["show_assistant"] = False
+if "is_processing" not in st.session_state: st.session_state["is_processing"] = False
 
 def login_screen():
     st.title("BILLING PRO")
@@ -145,6 +147,7 @@ with st.sidebar:
             curr = r.currency or ""
             if st.button(f"{r.store_name or 'UNNAMED'} \n {curr}{r.total or 0}", key=f"h_{r.id}", use_container_width=True):
                 st.session_state["receipt_data"] = r.raw_json
+                st.session_state["current_receipt_id"] = r.id
                 st.rerun()
     except: pass
 
@@ -158,6 +161,7 @@ with st.container():
     
     if files:
         if st.button("EXECUTE ANALYSIS", type="primary", use_container_width=True):
+            st.session_state["is_processing"] = True
             with st.status("ANALYZING DATA..."):
                 for f in files:
                     img = convert_pdf_to_image(f.getvalue()) if f.name.endswith(".pdf") else Image.open(io.BytesIO(f.getvalue())).convert("RGB")
@@ -166,99 +170,134 @@ with st.container():
                         img.save(tmp.name, format="JPEG")
                         h = calculate_hash(tmp.name)
                         cached = get_receipt_by_hash(h, user["id"])
-                        if cached: st.session_state["receipt_data"] = cached.raw_json
+                        if cached: 
+                            st.session_state["receipt_data"] = cached.raw_json
+                            st.session_state["current_receipt_id"] = cached.id
                         else:
                             res_data, res_hash = process_receipt_image(tmp.name, use_cache=False)
-                            save_receipt(res_data, user["id"], image_hash=res_hash)
+                            new_r = save_receipt(res_data, user["id"], image_hash=res_hash)
                             index_receipt(res_data, image_hash=res_hash)
                             st.session_state["receipt_data"] = res_data
+                            st.session_state["current_receipt_id"] = new_r.id
+            st.session_state["is_processing"] = False
             st.rerun()
 
 st.divider()
 
-data = st.session_state.get("receipt_data")
-col_grid, col_stats = st.columns([1.2, 0.8])
+if not st.session_state["is_processing"]:
+    data = st.session_state.get("receipt_data")
+    col_grid, col_stats = st.columns([1.2, 0.8])
 
-with col_grid:
-    if data:
-        d = data if isinstance(data, dict) else data.model_dump()
-        st.markdown("#### EXTRACTION SUMMARY")
-        k1, k2, k3 = st.columns(3)
-        k1.metric("MERCHANT", d.get('store_info', {}).get('name') or "UNDEFINED")
-        k2.metric("DATE", d.get('receipt_info', {}).get('date') or "PENDING")
-        curr = d.get('totals', {}).get('currency') or ""
-        k3.metric("TOTAL", f"{curr}{d.get('totals', {}).get('total') or 0.0}")
-        st.markdown("#### LINE ITEMS")
-        st.dataframe(pd.DataFrame(d.get('items', [])), use_container_width=True, hide_index=True)
-    else:
-        st.info("AWAITING INPUT")
-
-with col_stats:
-    st.markdown("#### ANALYTICS")
-    all_recs = get_all_receipts(user["id"])
-    if all_recs:
-        # Dashboard Selection Dropdown
-        view_option = st.selectbox(
-            "SELECT PERSPECTIVE",
-            ["SUMMARY", "SPENDING TREND", "MERCHANT ALLOCATION", "TOP ITEMS"],
-            label_visibility="collapsed"
-        )
-        
-        # Convert to DataFrame for easier analysis
-        df_stats = pd.DataFrame([
-            {
-                "Merchant": r.store_name or "Unknown",
-                "Total": r.total or 0.0,
-                "Date": pd.to_datetime(r.date, dayfirst=True, errors='coerce'),
-                "Currency": r.currency or "N/A",
-                "Items": r.num_items or 0
-            } for r in all_recs
-        ])
-        
-        st.divider()
-
-        if view_option == "SUMMARY":
-            # 1. Summary Metrics
-            m1, m2 = st.columns(2)
-            total_spent = df_stats["Total"].sum()
-            avg_spent = df_stats["Total"].mean()
-            m1.metric("TOTAL VOLUME", f"${total_spent:,.2f}")
-            m2.metric("AVG TRANSACTION", f"${avg_spent:,.2f}")
-            st.caption(f"BASED ON {len(all_recs)} ANALYZED RECORDS")
-
-        elif view_option == "SPENDING TREND":
-            # 2. Spending Trend (Over Time)
-            st.markdown("#### SPENDING TREND")
-            if not df_stats["Date"].isna().all():
-                trend_df = df_stats.dropna(subset=["Date"]).sort_values("Date")
-                trend_df = trend_df.groupby("Date")["Total"].sum().reset_index()
-                st.line_chart(trend_df.set_index("Date"))
-            else:
-                st.info("NO VALID DATE DATA FOUND")
-
-        elif view_option == "MERCHANT ALLOCATION":
-            # 3. Merchant Distribution
-            st.markdown("#### MERCHANT ALLOCATION")
-            merchant_dist = df_stats.groupby("Merchant")["Total"].sum().sort_values(ascending=False)
-            st.bar_chart(merchant_dist)
-
-        elif view_option == "TOP ITEMS":
-            # 4. Item Analytics
-            st.markdown("#### TOP ITEMS")
-            all_items = []
-            for r in all_recs:
-                for item in r.items:
-                    all_items.append({
-                        "Item": item.name,
-                        "Cost": item.total_price or 0.0
-                    })
-            if all_items:
-                df_items_all = pd.DataFrame(all_items)
-                top_items = df_items_all.groupby("Item")["Cost"].sum().sort_values(ascending=False).head(10)
-                st.table(top_items)
+    with col_grid:
+        if data:
+            d = data if isinstance(data, dict) else data.model_dump()
+            st.markdown("#### EXTRACTION SUMMARY")
+            k1, k2, k3 = st.columns(3)
+            k1.metric("MERCHANT", d.get('store_info', {}).get('name') or "UNDEFINED")
+            k2.metric("DATE", d.get('receipt_info', {}).get('date') or "PENDING")
+            curr = d.get('totals', {}).get('currency') or ""
+            k3.metric("TOTAL", f"{curr}{d.get('totals', {}).get('total') or 0.0}")
             
-    else:
-        st.caption("NO DATA AVAILABLE FOR ANALYSIS")
+            st.markdown("#### LINE ITEMS")
+            st.dataframe(pd.DataFrame(d.get('items', [])), use_container_width=True, hide_index=True)
+
+            st.divider()
+            if st.button("🗑️ DELETE RECORD", type="secondary", use_container_width=True):
+                if st.session_state.get("current_receipt_id"):
+                    if delete_receipt(st.session_state["current_receipt_id"], user["id"]):
+                        st.success("RECORD DELETED")
+                        st.session_state["receipt_data"] = None
+                        st.session_state["current_receipt_id"] = None
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("FAILED TO DELETE RECORD")
+        else:
+            st.info("AWAITING INPUT")
+
+    with col_stats:
+        if data:
+            st.markdown("#### ANALYTICS")
+            all_recs = get_all_receipts(user["id"])
+            if all_recs:
+                # Dashboard Selection Dropdown
+                view_option = st.selectbox(
+                    "SELECT PERSPECTIVE",
+                    ["SUMMARY", "SPENDING TREND", "MERCHANT ALLOCATION", "TOP ITEMS"],
+                    label_visibility="collapsed"
+                )
+                
+                # Convert to DataFrame for easier analysis
+                df_stats = pd.DataFrame([
+                    {
+                        "Merchant": r.store_name or "Unknown",
+                        "Total": r.total or 0.0,
+                        "Date": pd.to_datetime(r.date, dayfirst=True, errors='coerce'),
+                        "Currency": r.currency or "N/A",
+                        "Items": r.num_items or 0
+                    } for r in all_recs
+                ])
+                
+                st.divider()
+
+                if view_option == "SUMMARY":
+                    # ... (rest of summary code)
+                    st.markdown("#### VOLUME SUMMARY")
+                    m1, m2 = st.columns(2)
+                    m1.metric("TOTAL RECORDS", len(all_recs))
+                    total_items = df_stats["Items"].sum()
+                    m2.metric("TOTAL ITEMS PROCESSED", int(total_items))
+                    st.caption(f"ANALYTICS BASED ON {len(all_recs)} ANALYZED DOCUMENTS")
+                    
+                    # Export options
+                    st.divider()
+                    st.markdown("#### EXPORT DATA")
+                    c1, c2 = st.columns(2)
+                    csv = df_stats.to_csv(index=False).encode('utf-8')
+                    c1.download_button("DOWNLOAD CSV", data=csv, file_name="receipts.csv", mime="text/csv", use_container_width=True)
+                    
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        df_stats.to_excel(writer, index=False, sheet_name='Receipts')
+                    c2.download_button("DOWNLOAD EXCEL", data=output.getvalue(), file_name="receipts.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+
+                elif view_option == "SPENDING TREND":
+                    # 2. Spending Trend (Over Time)
+                    st.markdown("#### TRANSACTION VOLUME")
+                    if not df_stats["Date"].isna().all():
+                        trend_df = df_stats.dropna(subset=["Date"]).sort_values("Date")
+                        trend_df = trend_df.groupby("Date").size().reset_index(name='Count')
+                        st.line_chart(trend_df.set_index("Date"))
+                    else:
+                        st.info("NO VALID DATE DATA FOUND")
+
+                elif view_option == "MERCHANT ALLOCATION":
+                    # 3. Merchant Distribution
+                    st.markdown("#### MERCHANT FREQUENCY")
+                    merchant_dist = df_stats.groupby("Merchant").size().sort_values(ascending=False)
+                    st.bar_chart(merchant_dist)
+
+                elif view_option == "TOP ITEMS":
+                    # 4. Item Analytics
+                    st.markdown("#### TOP ITEMS")
+                    all_items = []
+                    for r in all_recs:
+                        for item in r.items:
+                            all_items.append({
+                                "Item": item.name,
+                                "Cost": item.total_price or 0.0
+                            })
+                    if all_items:
+                        df_items_all = pd.DataFrame(all_items)
+                        top_items = df_items_all.groupby("Item")["Cost"].sum().sort_values(ascending=False).head(10)
+                        st.table(top_items)
+                    
+            else:
+                st.caption("NO DATA AVAILABLE FOR ANALYSIS")
+        else:
+            st.empty()
+else:
+    st.info("PROCESSING DATA... PLEASE WAIT.")
 
 # Assistant
 with st.sidebar:
@@ -277,11 +316,13 @@ if st.session_state["show_assistant"]:
         if prompt := st.chat_input("ASK ABOUT YOUR FINANCES"):
             st.session_state["chat_history"].append({"role": "user", "content": prompt})
             ctx = query_receipts(prompt)
-            llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", api_key=api_key)
-            resp = llm.invoke(f"HISTORY:\n{ctx}\n\nUSER: {prompt}")
-            
-            full_content = resp.content
-            text_content = "".join([block['text'] for block in full_content if block.get('type') == 'text']) if isinstance(full_content, list) else full_content
-            
+
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            resp = model.generate_content(f"HISTORY:\n{ctx}\n\nUSER: {prompt}")
+
+            text_content = resp.text
+
             st.session_state["chat_history"].append({"role": "assistant", "content": text_content})
             st.rerun()
+

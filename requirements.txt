@@ -1,7 +1,6 @@
 streamlit
 pillow
 pydantic
-langchain-google-genai
 python-dotenv
 google-generativeai
 sqlalchemy
@@ -10,3 +9,4 @@ pandas
 openpyxl
 pymupdf
 chromadb
+bcrypt

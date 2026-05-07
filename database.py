@@ -105,10 +105,13 @@ def save_receipt(receipt_obj, user_id, image_hash=None):
     finally:
         db.close()
 
-def get_receipt_by_hash(hash_str, user_id):
+def get_receipt_by_hash(hash_str, user_id=None):
     db = SessionLocal()
     try:
-        return db.query(ReceiptDB).filter(ReceiptDB.image_hash == hash_str, ReceiptDB.user_id == user_id).first()
+        query = db.query(ReceiptDB).filter(ReceiptDB.image_hash == hash_str)
+        if user_id:
+            query = query.filter(ReceiptDB.user_id == user_id)
+        return query.first()
     finally:
         db.close()
 
@@ -123,5 +126,17 @@ def get_all_receipts(user_id):
     db = SessionLocal()
     try:
         return db.query(ReceiptDB).options(joinedload(ReceiptDB.items)).filter(ReceiptDB.user_id == user_id).order_by(ReceiptDB.created_at.desc()).all()
+    finally:
+        db.close()
+
+def delete_receipt(receipt_id, user_id):
+    db = SessionLocal()
+    try:
+        receipt = db.query(ReceiptDB).filter(ReceiptDB.id == receipt_id, ReceiptDB.user_id == user_id).first()
+        if receipt:
+            db.delete(receipt)
+            db.commit()
+            return True
+        return False
     finally:
         db.close()
